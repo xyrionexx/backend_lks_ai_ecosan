@@ -13,7 +13,7 @@ import time
 from PIL import Image
 import io
 import io
-from openai import AsyncOpenAI
+from openrouter import OpenRouter
 from dotenv import load_dotenv
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -23,8 +23,7 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-preview") # Default model
 
-client = AsyncOpenAI(
-    base_url="https://openrouter.ai/api/v1",
+client = OpenRouter(
     api_key=OPENROUTER_API_KEY
 )
 
@@ -253,7 +252,7 @@ async def chat_bot(message: str = Form(...)):
     )
     
     try:
-        response = await client.chat.completions.create(
+        response = await client.chat.send_async(
             model=OPENROUTER_MODEL,
             messages=[
                 {"role": "system", "content": system_instruction},
