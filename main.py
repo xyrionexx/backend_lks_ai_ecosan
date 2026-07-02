@@ -60,11 +60,11 @@ def preprocess_image(image: Image.Image):
     # Resize ke ukuran standar ImageNet
     image = image.resize((224, 224))
     # Convert ke Numpy dan normalize (0-1)
-    img_data = np.array(image).astype('float32') / 255.0
+    img_data = np.array(image).astype(np.float32) / 255.0
     
     # Standarisasi warna ImageNet
-    mean = np.array([0.485, 0.456, 0.406])
-    std = np.array([0.229, 0.224, 0.225])
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
     img_data = (img_data - mean) / std
     
     # PyTorch butuh format Channel-First (CHW), default Image PIL adalah HWC
@@ -72,7 +72,7 @@ def preprocess_image(image: Image.Image):
     
     # Tambahkan dimensi batch (1, C, H, W)
     img_data = np.expand_dims(img_data, axis=0)
-    return img_data
+    return img_data.astype(np.float32)
 
 # Database Penanganan Sampah Sederhana
 waste_info = {
@@ -198,6 +198,8 @@ async def predict(file: UploadFile = File(...)):
             "hash": img_hash
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
 
 @app.post("/feedback")
