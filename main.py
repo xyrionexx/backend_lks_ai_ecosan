@@ -286,4 +286,5 @@ async def get_news():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Menggunakan port 19151 sesuai dengan alokasi Pterodactyl
+    uvicorn.run("main:app", host="0.0.0.0", port=19151, reload=True)
