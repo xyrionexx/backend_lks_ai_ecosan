@@ -13,16 +13,20 @@ import time
 from PIL import Image
 import io
 import io
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
-import google.generativeai as genai
 import urllib.request
 import xml.etree.ElementTree as ET
 
-# Load environment variables (termasuk API Key Gemini)
+# Load environment variables
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY and GEMINI_API_KEY != "TARUH_API_KEY_ANDA_DI_SINI":
-    genai.configure(api_key=GEMINI_API_KEY)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-preview") # Default model
+
+client = AsyncOpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY
+)
 
 # In-memory "database" untuk menampung feedback user (Instant AI Learning)
 feedback_cache = {}
@@ -233,10 +237,10 @@ async def chat_bot(message: str = Form(...)):
     Chatbot Cerdas berbasis Google Gemini 1.5 Flash.
     Dilengkapi dengan AI Guardrails (System Instruction) agar tidak keluar topik.
     """
-    if not GEMINI_API_KEY or GEMINI_API_KEY == "TARUH_API_KEY_ANDA_DI_SINI":
+    if not OPENROUTER_API_KEY or OPENROUTER_API_KEY == "TARUH_API_KEY_ANDA_DI_SINI":
         return {
             "status": "success", 
-            "reply": "Maaf, API Key Gemini belum diatur. Silakan buka file `.env` di folder backend dan masukkan API Key Anda agar saya bisa berfungsi."
+            "reply": "Maaf, API Key OpenRouter belum diatur. Silakan buka file `.env` di folder backend dan masukkan API Key Anda agar saya bisa berfungsi."
         }
 
     # AI Guardrails: Memaksa model hanya membahas lingkungan
@@ -249,10 +253,18 @@ async def chat_bot(message: str = Form(...)):
     )
     
     try:
-        model = genai.GenerativeModel("gemini-3-flash-preview", system_instruction=system_instruction)
-        response = model.generate_content(message)
-        return {"status": "success", "reply": response.text}
+        response = await client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": message}
+            ]
+        )
+        reply = response.choices[0].message.content
+        return {"status": "success", "reply": reply}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"status": "error", "reply": f"Waduh, koneksi ke otak satelit terputus: {str(e)}"}
 
 @app.get("/news")
