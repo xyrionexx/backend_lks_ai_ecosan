@@ -1,6 +1,6 @@
 # Panduan Lengkap Deploy Python Backend (EcoSort API) 🚀
 
-Dokumen ini fokus 100% pada bagian **Python Backend** (FastAPI & PyTorch). Berikut adalah panduan langkah demi langkah untuk mengudara (deploy) server Anda ke *Production*.
+Dokumen ini fokus 100% pada bagian **Python Backend** (FastAPI & ONNX Runtime). Berikut adalah panduan langkah demi langkah untuk mengudara (deploy) server Anda ke *Production*.
 
 ---
 
@@ -75,3 +75,11 @@ Setelah server Python Anda hidup di internet (baik pakai Render atau VPS), seger
 Buka *project* Flutter Anda, cari semua kodingan `192.168.0.127:8000`, dan ganti dengan URL server baru Anda tersebut.
 
 Selesai! Aplikasi Anda resmi terhubung dari seluruh dunia. 🌍
+
+---
+
+## 5. Deployment ke Pterodactyl Panel (ONNX Runtime)
+Backend ini kini telah dimigrasikan menggunakan **ONNX Runtime** (bukan PyTorch), sehingga sangat ringan (hanya puluhan MB) dan memori-efisien. Ini membuatnya **100% kompatibel** dengan container Pterodactyl Panel yang memiliki keterbatasan RAM dan disk space.
+- Gunakan Egg **Python** standar di Pterodactyl.
+- Pastikan Startup Command menginstal file `requirements.txt` dan mengeksekusi `uvicorn main:app --host 0.0.0.0 --port {{SERVER_PORT}}`.
+- Masukkan variabel lingkungan (Environment Variables) `GEMINI_API_KEY` di tab panel.

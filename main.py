@@ -2,9 +2,8 @@ from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import torch
-import torch.nn as nn
-from train import get_model
+import onnxruntime as ort
+import numpy as np
 import io
 import random
 import hashlib
@@ -13,7 +12,7 @@ import shutil
 import time
 from PIL import Image
 import io
-import torchvision.transforms as transforms
+import io
 from dotenv import load_dotenv
 import google.generativeai as genai
 import urllib.request
@@ -47,28 +46,33 @@ app.add_middleware(
 
 # Inisialisasi Model
 classes = ['cardboard', 'glass', 'metal', 'paper', 'plastic']
-model = get_model(num_classes=5)
 
-# Coba Load Model, jika tidak ada, gunakan default (dummy)
+# Load Model ONNX
+ort_session = None
 try:
-    # Memuat dictionary lengkap dari best_model.pth
-    checkpoint = torch.load("best_model.pth", map_location='cpu')
-    if 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-    else:
-        model.load_state_dict(checkpoint) # Backward compatibility
-    model.eval()
-    print("Model berhasil dimuat dari best_model.pth")
-except FileNotFoundError:
-    print("Model best_model.pth tidak ditemukan. Menggunakan model dummy untuk pengujian awal.")
-    model.eval()
+    ort_session = ort.InferenceSession("best_model.onnx")
+    print("Model ONNX berhasil dimuat dari best_model.onnx")
+except Exception as e:
+    print("Model best_model.onnx tidak ditemukan atau gagal dimuat.", str(e))
 
-# Transformasi gambar untuk inference (Wajib standar ImageNet)
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+# Transformasi gambar untuk inference secara manual dengan Numpy
+def preprocess_image(image: Image.Image):
+    # Resize ke ukuran standar ImageNet
+    image = image.resize((224, 224))
+    # Convert ke Numpy dan normalize (0-1)
+    img_data = np.array(image).astype('float32') / 255.0
+    
+    # Standarisasi warna ImageNet
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    img_data = (img_data - mean) / std
+    
+    # PyTorch butuh format Channel-First (CHW), default Image PIL adalah HWC
+    img_data = np.transpose(img_data, (2, 0, 1))
+    
+    # Tambahkan dimensi batch (1, C, H, W)
+    img_data = np.expand_dims(img_data, axis=0)
+    return img_data
 
 # Database Penanganan Sampah Sederhana
 waste_info = {
@@ -141,30 +145,39 @@ async def predict(file: UploadFile = File(...)):
             
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
-        # Preprocessing
-        image_tensor = transform(image).unsqueeze(0)
+        # Preprocessing manual (tanpa torchvision)
+        image_tensor = preprocess_image(image)
         
-        # Prediksi
-        with torch.no_grad():
-            outputs = model(image_tensor)
-            probs = torch.nn.functional.softmax(outputs, dim=1)[0]
+        # Prediksi dengan ONNX Runtime
+        if ort_session is None:
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Model ONNX belum siap."})
             
-            k = min(3, len(classes))
-            topk_prob, topk_catid = torch.topk(probs, k)
-            
-            predicted_idx = topk_catid[0].item()
-            confidence = topk_prob[0].item() * 100
-            
-            candidates = []
-            for i in range(k):
-                idx = topk_catid[i].item()
-                c = classes[idx]
-                p = topk_prob[i].item() * 100
-                candidates.append({
-                    "prediction": waste_info[c]["id"],
-                    "confidence": f"{p:.0f}%",
-                    "raw_class": c
-                })
+        ort_inputs = {ort_session.get_inputs()[0].name: image_tensor}
+        ort_outs = ort_session.run(None, ort_inputs)
+        outputs = ort_outs[0][0] # Ambil hasil batch pertama
+        
+        # Fungsi Softmax manual
+        exp_preds = np.exp(outputs - np.max(outputs))
+        probs = exp_preds / np.sum(exp_preds)
+        
+        k = min(3, len(classes))
+        # Mengambil indeks top-k (diurutkan dari besar ke kecil)
+        topk_idx = np.argsort(probs)[-k:][::-1]
+        topk_prob = probs[topk_idx]
+        
+        predicted_idx = topk_idx[0]
+        confidence = topk_prob[0] * 100
+        
+        candidates = []
+        for i in range(k):
+            idx = topk_idx[i]
+            c = classes[idx]
+            p = topk_prob[i] * 100
+            candidates.append({
+                "prediction": waste_info[c]["id"],
+                "confidence": f"{p:.0f}%",
+                "raw_class": c
+            })
             
         class_name = classes[predicted_idx]
         info = waste_info[class_name]
